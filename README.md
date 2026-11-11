@@ -31,7 +31,7 @@ API 密钥使用当前 Windows 用户的 DPAPI 加密后保存在本机，不写
 
 路径设置本身保存在 `%LOCALAPPDATA%\DiskSentinel\settings.json`，用于记住自定义目录。
 
-![](./Assets/1.png)
+![](./Assets/321.png)
 ![](./Assets/2.png)
 ![](./Assets/3.png)
 ![](./Assets/4.png)
