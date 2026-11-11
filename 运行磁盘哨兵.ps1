@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
-$releaseRoot = Join-Path $PSScriptRoot 'Е▐▒Е╦┐Г┴┬'
+$releaseRoot = Join-Path $PSScriptRoot '╥╒╡╪╟Ф'
 $app = Get-ChildItem -LiteralPath $releaseRoot -Directory -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -like 'Гё│Г⌡≤Е⌠╗Е┘╣*' } |
-    ForEach-Object { Join-Path $_.FullName 'Гё│Г⌡≤Е⌠╗Е┘╣.exe' } |
+    Where-Object { $_.Name -like '╢еелиз╠Ь*' } |
+    ForEach-Object { Join-Path $_.FullName '╢еелиз╠Ь.exe' } |
     Where-Object { Test-Path -LiteralPath $_ } |
     Sort-Object { (Get-Item -LiteralPath $_).LastWriteTime } -Descending |
     Select-Object -First 1

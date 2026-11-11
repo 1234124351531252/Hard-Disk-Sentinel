@@ -1,8 +1,7 @@
 @echo off
 setlocal
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0??????.ps1"
-if errorlevel 1 (
-  echo.
-  pause
-  exit /b 1
-)
+cd /d "%~dp0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& .\ткпп╢еелиз╠Ь.ps1; exit $LASTEXITCODE"
+echo.
+echo мкЁЖбКё╨%errorlevel%
+pause

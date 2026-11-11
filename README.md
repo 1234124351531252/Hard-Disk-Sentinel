@@ -1,8 +1,12 @@
+# 纯Vibe Coding
+
 # 磁盘哨兵
+
+![](./Assets/DiskSentinel.ico)
 
 Windows 桌面磁盘监控工具。程序自动发现所有可用的本地磁盘，无需手动选择监控盘符。
 
-本仓库保留源码和运行入口，不包含发布目录或安装包。运行源码需要 Windows 和 .NET 8 SDK。
+运行需要 Windows 和 .NET 8 SDK。
 
 ## 功能
 
@@ -27,14 +31,8 @@ API 密钥使用当前 Windows 用户的 DPAPI 加密后保存在本机，不写
 
 路径设置本身保存在 `%LOCALAPPDATA%\DiskSentinel\settings.json`，用于记住自定义目录。
 
-## 从源码运行
-
-在 Windows 安装 .NET 8 SDK 后，于项目目录运行：
-
-```powershell
-dotnet run
-```
-
-发布程序和安装包不存放在本 GitHub 仓库中。
-
+![](./Assets/1.png)
+![](./Assets/2.png)
+![](./Assets/3.png)
+![](./Assets/4.png)
 
