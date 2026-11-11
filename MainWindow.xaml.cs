@@ -438,9 +438,11 @@ public partial class MainWindow : Window
         if (confirm != MessageBoxResult.Yes) return;
         AnalysisStatus.Text = "正在整理文件并请求模型…";
         AnalyzeButtonEnabled(false);
+        string? sentPrompt = null;
         try
         {
             var prompt = await Task.Run(() => BuildAnalysisPrompt(paths));
+            sentPrompt = prompt;
             var result = await CallModelAsync(prompt);
             AppendAIHistory(new AIRequestRecord(DateTime.Now, config.Provider ?? "OpenAI 兼容 / 自定义", config.Model,
                 result.InputTokens, result.OutputTokens, result.TotalTokens, prompt, result.Response));
@@ -448,7 +450,15 @@ public partial class MainWindow : Window
             AnalysisGrid.ItemsSource = rows;
             AnalysisStatus.Text = $"模型返回 {rows.Count} 条建议 · 仅为推测，删除前请自行核实";
         }
-        catch (Exception ex) { AnalysisStatus.Text = "分析失败：" + ex.Message; }
+        catch (Exception ex)
+        {
+            if (sentPrompt is not null)
+            {
+                try { AppendAIHistory(new AIRequestRecord(DateTime.Now, config.Provider ?? "OpenAI 兼容 / 自定义", config.Model, null, null, null, sentPrompt, "请求失败：" + ex.Message)); }
+                catch { }
+            }
+            AnalysisStatus.Text = "分析失败：" + ex.Message;
+        }
         finally { AnalyzeButtonEnabled(true); }
     }
 
