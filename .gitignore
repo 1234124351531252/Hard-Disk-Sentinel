@@ -3,6 +3,8 @@ bin/
 obj/
 .vs/
 发布版/
+发布程序.bat
+发布程序.ps1
 *.user
 *.suo
 *.log
