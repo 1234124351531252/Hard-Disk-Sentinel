@@ -1,10 +1,8 @@
 @echo off
 setlocal
-set "APP=%~dp0???\????\????.exe"
-if not exist "%APP%" (
-  echo Published app not found. Run ????.bat first.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0??????.ps1"
+if errorlevel 1 (
+  echo.
   pause
   exit /b 1
 )
-start "" "%APP%"
-exit /b 0

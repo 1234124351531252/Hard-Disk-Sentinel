@@ -390,7 +390,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { AnalysisStatus.Text = "无法读取目录：" + ex.Message; return; }
         if (paths.Length == 0) { AnalysisStatus.Text = "当前目录没有直接包含的文件"; return; }
         var info = paths.Select(p => { try { var f = new FileInfo(p); return $"• {p} | {Human(f.Length)} | {f.LastWriteTime:yyyy-MM-dd HH:mm}"; } catch { return $"• {p} | 元数据不可读"; } });
-        var confirm = MessageBox.Show($"将把当前目录中的 {paths.Length} 个文件信息发送到已配置的大模型服务。小型文本文件会附带内容，二进制或大文件仅发送元数据。\n\n目录：{CurrentDirectory}\n\n{string.Join("\n", info.Take(8))}{(paths.Length > 8 ? "\n…" : "")}\n\n是否继续？", "发送文件信息进行 AI 分析", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        var confirm = MessageBox.Show($"将只发送当前目录直接包含的 {paths.Length} 个文件的元数据（路径、名称、大小、修改时间），不会读取或发送文件内容，也不会递归子目录。\n\n目录：{CurrentDirectory}\n\n{string.Join("\n", info.Take(8))}{(paths.Length > 8 ? "\n…" : "")}\n\n是否继续？", "发送文件信息进行 AI 分析", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.Yes) return;
         AnalysisStatus.Text = "正在整理文件并请求模型…";
         AnalyzeButtonEnabled(false);
@@ -421,24 +421,15 @@ public partial class MainWindow : Window
 
     private static string BuildAnalysisPrompt(string[] paths)
     {
-        const int fileLimit = 64 * 1024, totalLimit = 1024 * 1024;
-        var textExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".txt", ".md", ".csv", ".json", ".xml", ".yaml", ".yml", ".ini", ".log", ".cs", ".py", ".js", ".ts", ".html", ".css", ".sql", ".ps1", ".bat", ".config" };
-        var sb = new StringBuilder("你是文件整理助手。仅根据提供的路径、名称、大小、修改时间和可能的文本内容，逐个判断文件大致用途、建议保留/可考虑删除/需人工判断。绝不能声称确定无用；系统文件、应用数据、未知文件默认建议保留或人工判断。只输出 JSON：{\"items\":[{\"path\":\"原始完整路径\",\"kind\":\"文件用途\",\"canDelete\":false,\"reason\":\"理由\",\"confidence\":\"低/中/高\"}]}。删除建议只是推测。\n\n文件清单：\n");
-        var used = 0;
+        var sb = new StringBuilder("你是文件整理助手。输入仅包含当前目录直接包含的文件元数据，不包含文件内容，也不包含子目录内容。仅根据完整路径、文件名、扩展名、大小和修改时间，谨慎推测文件用途并给出建议保留/可考虑删除/需人工判断。不可声称确定无用；系统文件、应用数据、未知文件默认建议保留或人工判断。只输出 JSON：{\"items\":[{\"path\":\"原始完整路径\",\"kind\":\"文件用途\",\"canDelete\":false,\"reason\":\"理由\",\"confidence\":\"低/中/高\"}]}。删除建议只是推测。\n\n当前目录直属文件元数据：\n");
         foreach (var path in paths)
         {
             try
             {
                 var file = new FileInfo(path);
-                sb.AppendLine($"\nFILE {path} | {Human(file.Length)} | {file.LastWriteTime:yyyy-MM-dd HH:mm}");
-                if (textExtensions.Contains(file.Extension) && file.Length <= fileLimit && used + file.Length <= totalLimit)
-                {
-                    var content = File.ReadAllText(path);
-                    sb.AppendLine("CONTENT-BEGIN"); sb.AppendLine(content); sb.AppendLine("CONTENT-END"); used += (int)file.Length;
-                }
-                else sb.AppendLine("CONTENT: 未发送（非支持文本类型或达到内容大小上限）");
+                sb.AppendLine($"FILE | {path} | 名称={file.Name} | 扩展名={file.Extension} | 大小={Human(file.Length)} | 修改时间={file.LastWriteTime:yyyy-MM-dd HH:mm}");
             }
-            catch { sb.AppendLine("CONTENT: 无法读取"); }
+            catch { sb.AppendLine($"FILE | {path} | 元数据不可读"); }
         }
         return sb.ToString();
     }

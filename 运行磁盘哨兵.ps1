@@ -1,7 +1,13 @@
 $ErrorActionPreference = 'Stop'
-$app = Join-Path $PSScriptRoot '发布版\磁盘哨兵\磁盘哨兵.exe'
-if (-not (Test-Path -LiteralPath $app)) {
-    Write-Host 'Published app not found. Run 发布程序.bat first.' -ForegroundColor Yellow
+$releaseRoot = Join-Path $PSScriptRoot '发布版'
+$app = Get-ChildItem -LiteralPath $releaseRoot -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -like '磁盘哨兵*' } |
+    ForEach-Object { Join-Path $_.FullName '磁盘哨兵.exe' } |
+    Where-Object { Test-Path -LiteralPath $_ } |
+    Sort-Object { (Get-Item -LiteralPath $_).LastWriteTime } -Descending |
+    Select-Object -First 1
+if (-not $app) {
+    Write-Host 'Published app not found. Build the app before launching.' -ForegroundColor Yellow
     Read-Host 'Press Enter to exit'
     exit 1
 }
