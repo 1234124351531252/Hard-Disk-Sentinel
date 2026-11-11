@@ -17,3 +17,5 @@ changes-*.jsonl
 *.pfx
 *.key
 secrets/
+
+ai-requests.jsonl

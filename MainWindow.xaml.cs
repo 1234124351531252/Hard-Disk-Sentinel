@@ -57,6 +57,7 @@ public partial class MainWindow : Window
             var directoryBaseline = Path.Combine(_dataDir, "directories.json");
             try { if (File.Exists(directoryBaseline)) _directories = await Task.Run(() => JsonSerializer.Deserialize<HashSet<string>>(File.ReadAllText(directoryBaseline)) ?? new(StringComparer.OrdinalIgnoreCase)); } catch { }
             LoadModelConfig();
+            LoadAIHistory();
             UpdateMetrics(); _metricsTimer.Start();
             await ScanAsync(); _timer.Start();
         };
@@ -254,12 +255,13 @@ public partial class MainWindow : Window
 
     private void Logs_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         DiskSummaryCards.Visibility = Visibility.Collapsed;
         LogsPage.Visibility = Visibility.Visible;
         HomeNavButton.Background = Brushes.Transparent; HomeNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         DiskNavButton.Background = Brushes.Transparent; DiskNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         LogsNavButton.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); LogsNavButton.Foreground = Brushes.White;
+        SetNav(LogsNavButton);
         PageTitle.Text = "变化日志";
         PageSubtitle.Text = "来源栏为规则推测，会显示判断依据；不是进程级确认";
         var logPath = Path.Combine(_dataDir, $"changes-{DateTime.Now:yyyy-MM}.jsonl");
@@ -270,11 +272,12 @@ public partial class MainWindow : Window
 
     private void Disk_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Visible; ScanButton.Visibility = Visibility.Visible;
+        HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Visible; ScanButton.Visibility = Visibility.Visible;
         DiskSummaryCards.Visibility = Visibility.Visible;
         HomeNavButton.Background = Brushes.Transparent; HomeNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         DiskNavButton.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); DiskNavButton.Foreground = Brushes.White;
         LogsNavButton.Background = Brushes.Transparent; LogsNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
+        SetNav(DiskNavButton);
         PageTitle.Text = "磁盘空间";
         if (DriveGrid.SelectedItem is DriveRow d) PageSubtitle.Text = $"{d.Root} · 双击文件夹继续浏览";
         else PageSubtitle.Text = "自动发现并监控所有可用磁盘";
@@ -282,17 +285,18 @@ public partial class MainWindow : Window
 
     private void Home_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Visible; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        HomePage.Visibility = Visibility.Visible; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         DiskSummaryCards.Visibility = Visibility.Collapsed;
         HomeNavButton.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); HomeNavButton.Foreground = Brushes.White;
         DiskNavButton.Background = Brushes.Transparent; DiskNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         LogsNavButton.Background = Brushes.Transparent; LogsNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
+        SetNav(HomeNavButton);
         PageTitle.Text = "首页"; PageSubtitle.Text = "设备状态与实时运行数据";
     }
 
     private async void Manage_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Visible;
+        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Visible;
         DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         SetNav(ManageNavButton); PageTitle.Text = "磁盘管理"; PageSubtitle.Text = "从盘符开始浏览；勾选项目可多选处理";
         if (DriveGrid.SelectedItem is DriveRow drive)
@@ -305,11 +309,52 @@ public partial class MainWindow : Window
 
     private void Model_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Visible;
+        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Visible;
         DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         SetNav(ModelNavButton); PageTitle.Text = "大模型接入"; PageSubtitle.Text = "配置兼容 OpenAI 的模型 API";
         LoadModelConfig();
     }
+
+    private void AIHistory_Click(object sender, RoutedEventArgs e)
+    {
+        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Visible;
+        DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        SetNav(AIHistoryNavButton); PageTitle.Text = "模型记录"; PageSubtitle.Text = "查看每次文件预测发送的内容、模型回复和用量";
+        LoadAIHistory();
+    }
+
+    private void AIHistoryGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (AIHistoryGrid.SelectedItem is not AIHistoryDisplay record) { AIHistoryPrompt.Text = ""; AIHistoryResponse.Text = ""; return; }
+        AIHistoryPrompt.Text = record.Prompt;
+        AIHistoryResponse.Text = record.Response;
+    }
+
+    private void LoadAIHistory()
+    {
+        var records = new List<AIRequestRecord>();
+        try
+        {
+            if (File.Exists(AIHistoryPath))
+                foreach (var line in File.ReadLines(AIHistoryPath).TakeLast(1000))
+                    try { var row = JsonSerializer.Deserialize<AIRequestRecord>(line); if (row is not null) records.Add(row); } catch { }
+        }
+        catch { }
+        var display = records.OrderByDescending(x => x.Time).Select(x => new AIHistoryDisplay(x.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), x.Provider, x.Model, TokenText(x.InputTokens), TokenText(x.OutputTokens), TokenText(x.TotalTokens), x.Prompt, x.Response)).ToList();
+        AIHistoryGrid.ItemsSource = display;
+        AIHistorySummary.Text = $"共 {display.Count} 次预测记录 · 仅本机保存";
+        if (display.Count == 0) { AIHistoryPrompt.Text = ""; AIHistoryResponse.Text = ""; }
+    }
+
+    private async void ClearAIHistory_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show("确定清空本机保存的所有模型预测记录吗？", "清空模型记录", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        try { if (File.Exists(AIHistoryPath)) File.Delete(AIHistoryPath); LoadAIHistory(); }
+        catch (Exception ex) { MessageBox.Show("清空失败：" + ex.Message, "模型记录", MessageBoxButton.OK, MessageBoxImage.Error); }
+        await Task.CompletedTask;
+    }
+
+    private static string TokenText(int? count) => count?.ToString("N0") ?? "未提供";
 
     private async void ManageDrive_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -344,7 +389,7 @@ public partial class MainWindow : Window
 
     private void SetNav(System.Windows.Controls.Button active)
     {
-        foreach (var button in new[] { HomeNavButton, DiskNavButton, ManageNavButton, ModelNavButton, LogsNavButton })
+        foreach (var button in new[] { HomeNavButton, DiskNavButton, ManageNavButton, ModelNavButton, AIHistoryNavButton, LogsNavButton })
         { button.Background = Brushes.Transparent; button.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213)); }
         active.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); active.Foreground = Brushes.White;
     }
@@ -370,7 +415,7 @@ public partial class MainWindow : Window
         {
             SaveModel_Click(sender, e);
             var response = await CallModelAsync("只回复 OK");
-            ModelStatus.Text = "连接成功：" + response.Trim();
+            ModelStatus.Text = "连接成功：" + response.Response.Trim();
         }
         catch (Exception ex) { ModelStatus.Text = "连接失败：" + ex.Message; }
     }
@@ -396,8 +441,10 @@ public partial class MainWindow : Window
         try
         {
             var prompt = await Task.Run(() => BuildAnalysisPrompt(paths));
-            var answer = await CallModelAsync(prompt);
-            var rows = ParseAnalysis(answer, paths);
+            var result = await CallModelAsync(prompt);
+            AppendAIHistory(new AIRequestRecord(DateTime.Now, config.Provider ?? "OpenAI 兼容 / 自定义", config.Model,
+                result.InputTokens, result.OutputTokens, result.TotalTokens, prompt, result.Response));
+            var rows = ParseAnalysis(result.Response, paths);
             AnalysisGrid.ItemsSource = rows;
             AnalysisStatus.Text = $"模型返回 {rows.Count} 条建议 · 仅为推测，删除前请自行核实";
         }
@@ -457,7 +504,7 @@ public partial class MainWindow : Window
         catch { return expected.Select(path => new AnalysisRow(Path.GetFileName(path), "未能判断", "需人工判断", "模型返回格式无效，未能可靠分析。", "低")).ToList(); }
     }
 
-    private async Task<string> CallModelAsync(string prompt)
+    private async Task<ModelCallResult> CallModelAsync(string prompt)
     {
         var config = ReadModelConfig() ?? throw new InvalidOperationException("请先保存模型连接配置");
         var key = UnprotectSecret(config.ProtectedKey);
@@ -493,10 +540,41 @@ public partial class MainWindow : Window
         var responseBody = await response.Content.ReadAsStringAsync();
         if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"HTTP {(int)response.StatusCode}: {responseBody[..Math.Min(responseBody.Length, 400)]}");
         using var json = JsonDocument.Parse(responseBody);
-        if (provider == "Claude") return string.Join("\n", json.RootElement.GetProperty("content").EnumerateArray().Where(x => x.TryGetProperty("type", out var t) && t.GetString() == "text").Select(x => x.GetProperty("text").GetString()));
-        if (provider == "Gemini") return string.Join("\n", json.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts").EnumerateArray().Where(x => x.TryGetProperty("text", out _)).Select(x => x.GetProperty("text").GetString()));
-        var content = json.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content");
-        return content.ValueKind == JsonValueKind.String ? content.GetString() ?? "模型未返回文本" : string.Join("\n", content.EnumerateArray().Where(x => x.TryGetProperty("text", out _)).Select(x => x.GetProperty("text").GetString()));
+        var root = json.RootElement;
+        string answer;
+        int? inputTokens = null, outputTokens = null, totalTokens = null;
+        if (provider == "Claude")
+        {
+            answer = string.Join("\n", root.GetProperty("content").EnumerateArray().Where(x => x.TryGetProperty("type", out var t) && t.GetString() == "text").Select(x => x.GetProperty("text").GetString()));
+            if (root.TryGetProperty("usage", out var usage))
+            {
+                inputTokens = ReadToken(usage, "input_tokens"); outputTokens = ReadToken(usage, "output_tokens");
+                if (inputTokens.HasValue && outputTokens.HasValue) totalTokens = inputTokens + outputTokens;
+            }
+        }
+        else if (provider == "Gemini")
+        {
+            answer = string.Join("\n", root.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts").EnumerateArray().Where(x => x.TryGetProperty("text", out _)).Select(x => x.GetProperty("text").GetString()));
+            if (root.TryGetProperty("usageMetadata", out var usage))
+            { inputTokens = ReadToken(usage, "promptTokenCount"); outputTokens = ReadToken(usage, "candidatesTokenCount"); totalTokens = ReadToken(usage, "totalTokenCount"); }
+        }
+        else
+        {
+            var content = root.GetProperty("choices")[0].GetProperty("message").GetProperty("content");
+            answer = content.ValueKind == JsonValueKind.String ? content.GetString() ?? "模型未返回文本" : string.Join("\n", content.EnumerateArray().Where(x => x.TryGetProperty("text", out _)).Select(x => x.GetProperty("text").GetString()));
+            if (root.TryGetProperty("usage", out var usage))
+            { inputTokens = ReadToken(usage, "prompt_tokens"); outputTokens = ReadToken(usage, "completion_tokens"); totalTokens = ReadToken(usage, "total_tokens"); }
+        }
+        return new ModelCallResult(answer, inputTokens, outputTokens, totalTokens);
+    }
+
+    private static int? ReadToken(JsonElement element, string name) => element.TryGetProperty(name, out var value) && value.TryGetInt32(out var count) ? count : null;
+    private string AIHistoryPath => Path.Combine(_dataDir, "ai-requests.jsonl");
+    private void AppendAIHistory(AIRequestRecord record)
+    {
+        Directory.CreateDirectory(_dataDir);
+        File.AppendAllText(AIHistoryPath, JsonSerializer.Serialize(record) + Environment.NewLine, Encoding.UTF8);
+        LoadAIHistory();
     }
 
     private string ModelConfigPath => Path.Combine(_dataDir, "model.json");
@@ -759,6 +837,9 @@ public partial class MainWindow : Window
     private sealed record FileRow(string Name, string Type, long Size, DateTime Modified, bool IsDirectory, string FullPath)
     { public bool IsChecked { get; set; } public string SizeText => Human(Size); public string ModifiedText => Modified.ToLocalTime().ToString("yyyy-MM-dd HH:mm"); }
     private sealed record LogDisplay(string TimeText, string DeltaText, string Kind, string Cause, string Path);
+    private sealed record AIRequestRecord(DateTime Time, string Provider, string Model, int? InputTokens, int? OutputTokens, int? TotalTokens, string Prompt, string Response);
+    private sealed record AIHistoryDisplay(string TimeText, string Provider, string Model, string InputTokens, string OutputTokens, string TotalTokens, string Prompt, string Response);
+    private sealed record ModelCallResult(string Response, int? InputTokens, int? OutputTokens, int? TotalTokens);
     private sealed record LegendRow(string Name, string SizeText, Brush Color);
     private sealed record ModelConfig(string Endpoint, string Model, string ProtectedKey, string? Provider = "OpenAI 兼容 / 自定义");
     private sealed record AnalysisRow(string Name, string Kind, string Recommendation, string Reason, string Confidence);
