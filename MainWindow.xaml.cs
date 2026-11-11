@@ -432,24 +432,25 @@ public partial class MainWindow : Window
         // Use the same immediate-child rows that are currently shown in the file manager.
         // This keeps hidden/system entries and stale scan results from silently diverging
         // from what the user can inspect in the directory list.
-        var visibleRows = ManageFilesGrid.ItemsSource?.Cast<FileRow>().ToList() ?? [];
-        var paths = visibleRows.Where(x => !x.IsDirectory).Select(x => x.FullPath).ToArray();
+        var visibleRows = ManageFilesGrid.ItemsSource?.Cast<FileRow>().ToArray() ?? [];
         AnalysisGrid.ItemsSource = null;
-        if (paths.Length == 0) { AnalysisStatus.Text = "当前目录列表中没有直接包含的文件；子文件夹不会递归分析"; return; }
-        var info = paths.Select(p => { try { var f = new FileInfo(p); return $"• {p} | {Human(f.Length)} | {f.LastWriteTime:yyyy-MM-dd HH:mm}"; } catch { return $"• {p} | 元数据不可读"; } });
-        var confirm = MessageBox.Show($"将只发送当前目录直接包含的 {paths.Length} 个文件的元数据（路径、名称、大小、修改时间），不会读取或发送文件内容，也不会递归子目录。\n\n目录：{CurrentDirectory}\n\n{string.Join("\n", info.Take(8))}{(paths.Length > 8 ? "\n…" : "")}\n\n是否继续？", "发送文件信息进行 AI 分析", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (visibleRows.Length == 0) { AnalysisStatus.Text = "当前目录为空；不会递归分析子目录"; return; }
+        var fileCount = visibleRows.Count(x => !x.IsDirectory);
+        var folderCount = visibleRows.Length - fileCount;
+        var info = visibleRows.Select(x => $"• {(x.IsDirectory ? "文件夹" : "文件")} | {x.FullPath} | {Human(x.Size)} | {x.Modified.ToLocalTime():yyyy-MM-dd HH:mm}");
+        var confirm = MessageBox.Show($"将发送当前目录直属的 {fileCount} 个文件和 {folderCount} 个文件夹的元数据（路径、名称、类型、大小、修改时间）。只发送文件夹本身，不会列出或发送其中的文件，也不会递归子目录。文件夹大小为扫描汇总值。\n\n目录：{CurrentDirectory}\n\n{string.Join("\n", info.Take(8))}{(visibleRows.Length > 8 ? "\n…" : "")}\n\n是否继续？", "发送当前目录信息进行 AI 分析", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.Yes) return;
         AnalysisStatus.Text = "正在整理文件并请求模型…";
         AnalyzeButtonEnabled(false);
         string? sentPrompt = null;
         try
         {
-            var prompt = await Task.Run(() => BuildAnalysisPrompt(paths));
+            var prompt = await Task.Run(() => BuildAnalysisPrompt(visibleRows));
             sentPrompt = prompt;
             var result = await CallModelAsync(prompt);
             AppendAIHistory(new AIRequestRecord(DateTime.Now, config.Provider ?? "OpenAI 兼容 / 自定义", config.Model,
                 result.InputTokens, result.OutputTokens, result.TotalTokens, prompt, result.Response));
-            var rows = ParseAnalysis(result.Response, paths);
+            var rows = ParseAnalysis(result.Response, visibleRows);
             AnalysisGrid.ItemsSource = rows;
             AnalysisStatus.Text = $"模型返回 {rows.Count} 条建议 · 仅为推测，删除前请自行核实";
         }
@@ -478,24 +479,22 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string BuildAnalysisPrompt(string[] paths)
+    private static string BuildAnalysisPrompt(FileRow[] entries)
     {
-        var sb = new StringBuilder("你是文件整理助手。输入仅包含当前目录直接包含的文件元数据，不包含文件内容，也不包含子目录内容。对每条 FILE 输入必须输出且只输出一条结果，path 必须逐字复制完整路径；不得遗漏、合并或新增文件。仅根据路径、文件名、扩展名、大小和修改时间，谨慎推测用途及建议。系统文件、应用数据、未知文件默认建议保留或人工判断。只输出 JSON：{\"items\":[{\"path\":\"原始完整路径\",\"kind\":\"文件用途\",\"canDelete\":false,\"reason\":\"理由\",\"confidence\":\"低/中/高\"}]}。删除建议只是推测。\n\n当前目录直属文件元数据：\n");
-        foreach (var path in paths)
+        var sb = new StringBuilder("你是文件整理助手。输入包含当前目录的直属文件和直属文件夹元数据。文件夹只作为一个条目分析；禁止推测或要求展开文件夹内容，输入中没有列出子文件或子文件夹。对每条 ENTRY 输入必须输出且只输出一条结果，path 必须逐字复制完整路径；不得遗漏、合并或新增条目。仅根据路径、名称、类型、大小和修改时间谨慎推测。系统目录、应用数据、未知文件和文件夹默认建议保留或人工判断。只输出 JSON：{\"items\":[{\"path\":\"原始完整路径\",\"kind\":\"用途\",\"canDelete\":false,\"reason\":\"理由\",\"confidence\":\"低/中/高\"}]}。删除建议只是推测。\n\n当前目录直属条目元数据（文件夹大小是扫描汇总值，不包含子项清单）：\n");
+        foreach (var entry in entries)
         {
-            try
-            {
-                var file = new FileInfo(path);
-                sb.AppendLine($"FILE | {path} | 名称={file.Name} | 扩展名={file.Extension} | 大小={Human(file.Length)} | 修改时间={file.LastWriteTime:yyyy-MM-dd HH:mm}");
-            }
-            catch { sb.AppendLine($"FILE | {path} | 元数据不可读"); }
+            var type = entry.IsDirectory ? "文件夹" : "文件";
+            var extension = entry.IsDirectory ? "无" : Path.GetExtension(entry.Name);
+            sb.AppendLine($"ENTRY | 类型={type} | {entry.FullPath} | 名称={entry.Name} | 扩展名={extension} | 大小={Human(entry.Size)}{(entry.IsDirectory ? "（目录扫描汇总）" : "")} | 修改时间={entry.Modified.ToLocalTime():yyyy-MM-dd HH:mm}");
         }
         return sb.ToString();
     }
 
-    private static List<AnalysisRow> ParseAnalysis(string answer, string[] paths)
+    private static List<AnalysisRow> ParseAnalysis(string answer, FileRow[] entries)
     {
-        var expected = paths.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var entryByPath = entries.ToDictionary(x => Path.GetFullPath(x.FullPath), StringComparer.OrdinalIgnoreCase);
+        var expected = entryByPath.Keys.ToList();
         var json = answer.Trim();
         if (json.StartsWith("```", StringComparison.Ordinal)) { json = json.Trim('`').Trim(); if (json.StartsWith("json", StringComparison.OrdinalIgnoreCase)) json = json[4..].Trim(); }
         try
@@ -510,11 +509,12 @@ public partial class MainWindow : Window
                 path = Path.GetFullPath(path);
                 if (!expected.Contains(path, StringComparer.OrdinalIgnoreCase)) continue;
                 var canDelete = item.TryGetProperty("canDelete", out var d) && d.ValueKind == JsonValueKind.True;
-                rows[path] = new AnalysisRow(Path.GetFileName(path), item.TryGetProperty("kind", out var k) ? k.GetString() ?? "" : "", canDelete ? "可考虑删除" : "建议保留 / 人工判断", item.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "未提供理由", item.TryGetProperty("confidence", out var c) ? c.GetString() ?? "低" : "低");
+                var entry = entryByPath[path];
+                rows[path] = new AnalysisRow(entry.Name, entry.IsDirectory ? "文件夹" : "文件", item.TryGetProperty("kind", out var k) ? k.GetString() ?? "" : "", canDelete ? "可考虑删除" : "建议保留 / 人工判断", item.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "未提供理由", item.TryGetProperty("confidence", out var c) ? c.GetString() ?? "低" : "低");
             }
-            return expected.Select(path => rows.TryGetValue(path, out var row) ? row : new AnalysisRow(Path.GetFileName(path), "未能判断", "需人工判断", "模型未返回该文件的分析结果。", "低")).ToList();
+            return expected.Select(path => rows.TryGetValue(path, out var row) ? row : new AnalysisRow(entryByPath[path].Name, entryByPath[path].IsDirectory ? "文件夹" : "文件", "未能判断", "需人工判断", "模型未返回该条目的分析结果。", "低")).ToList();
         }
-        catch { return expected.Select(path => new AnalysisRow(Path.GetFileName(path), "未能判断", "需人工判断", "模型返回格式无效，未能可靠分析。", "低")).ToList(); }
+        catch { return expected.Select(path => new AnalysisRow(entryByPath[path].Name, entryByPath[path].IsDirectory ? "文件夹" : "文件", "未能判断", "需人工判断", "模型返回格式无效，未能可靠分析。", "低")).ToList(); }
     }
 
     private async Task<ModelCallResult> CallModelAsync(string prompt)
@@ -857,6 +857,6 @@ public partial class MainWindow : Window
     private sealed record ModelCallResult(string Response, int? InputTokens, int? OutputTokens, int? TotalTokens);
     private sealed record LegendRow(string Name, string SizeText, Brush Color);
     private sealed record ModelConfig(string Endpoint, string Model, string ProtectedKey, string? Provider = "OpenAI 兼容 / 自定义");
-    private sealed record AnalysisRow(string Name, string Kind, string Recommendation, string Reason, string Confidence);
+    private sealed record AnalysisRow(string Name, string EntryType, string Kind, string Recommendation, string Reason, string Confidence);
     private sealed record RankingRow(string RankName, long Size, double BarWidth) { public string SizeText => Human(Size); }
 }
