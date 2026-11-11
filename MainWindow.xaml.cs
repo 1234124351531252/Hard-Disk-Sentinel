@@ -27,11 +27,11 @@ public partial class MainWindow : Window
 {
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMinutes(5) };
     private readonly DispatcherTimer _metricsTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly string _dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DiskSentinel");
     private readonly ObservableCollection<DriveRow> _drives = [];
     private Dictionary<string, FileState> _snapshot = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _directories = new(StringComparer.OrdinalIgnoreCase);
-    private bool _scanning;
     private string? CurrentDirectory;
     private ulong _lastIdle, _lastKernel, _lastUser, _lastReceived, _lastSent;
     private bool _hasCpuSample, _hasNetworkSample;
@@ -104,8 +104,7 @@ public partial class MainWindow : Window
 
     private async Task ScanAsync()
     {
-        if (_scanning) return;
-        _scanning = true;
+        await _scanGate.WaitAsync();
         NavStatus.Text = "正在扫描所有本地磁盘…";
         ChangeTotal.Text = "扫描中…";
         try
@@ -135,7 +134,7 @@ public partial class MainWindow : Window
             else if (_drives.Count > 0) { DriveGrid.SelectedIndex = 0; FilesGrid.ItemsSource = processed.files; }
         }
         catch (Exception ex) { NavStatus.Text = "扫描失败：" + ex.Message; ChangeTotal.Text = "扫描失败"; }
-        finally { _scanning = false; }
+        finally { _scanGate.Release(); }
     }
 
     private static ScanResult ScanAllDrives()
@@ -421,7 +420,7 @@ public partial class MainWindow : Window
 
     private static string BuildAnalysisPrompt(string[] paths)
     {
-        var sb = new StringBuilder("你是文件整理助手。输入仅包含当前目录直接包含的文件元数据，不包含文件内容，也不包含子目录内容。仅根据完整路径、文件名、扩展名、大小和修改时间，谨慎推测文件用途并给出建议保留/可考虑删除/需人工判断。不可声称确定无用；系统文件、应用数据、未知文件默认建议保留或人工判断。只输出 JSON：{\"items\":[{\"path\":\"原始完整路径\",\"kind\":\"文件用途\",\"canDelete\":false,\"reason\":\"理由\",\"confidence\":\"低/中/高\"}]}。删除建议只是推测。\n\n当前目录直属文件元数据：\n");
+        var sb = new StringBuilder("你是文件整理助手。输入仅包含当前目录直接包含的文件元数据，不包含文件内容，也不包含子目录内容。对每条 FILE 输入必须输出且只输出一条结果，path 必须逐字复制完整路径；不得遗漏、合并或新增文件。仅根据路径、文件名、扩展名、大小和修改时间，谨慎推测用途及建议。系统文件、应用数据、未知文件默认建议保留或人工判断。只输出 JSON：{\"items\":[{\"path\":\"原始完整路径\",\"kind\":\"文件用途\",\"canDelete\":false,\"reason\":\"理由\",\"confidence\":\"低/中/高\"}]}。删除建议只是推测。\n\n当前目录直属文件元数据：\n");
         foreach (var path in paths)
         {
             try
@@ -436,21 +435,26 @@ public partial class MainWindow : Window
 
     private static List<AnalysisRow> ParseAnalysis(string answer, string[] paths)
     {
+        var expected = paths.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var json = answer.Trim();
         if (json.StartsWith("```", StringComparison.Ordinal)) { json = json.Trim('`').Trim(); if (json.StartsWith("json", StringComparison.OrdinalIgnoreCase)) json = json[4..].Trim(); }
         try
         {
             using var doc = JsonDocument.Parse(json);
-            var items = doc.RootElement.GetProperty("items"); var rows = new List<AnalysisRow>();
+            var items = doc.RootElement.GetProperty("items");
+            var rows = new Dictionary<string, AnalysisRow>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in items.EnumerateArray())
             {
                 var path = item.TryGetProperty("path", out var p) ? p.GetString() ?? "" : "";
+                if (!Path.IsPathFullyQualified(path)) continue;
+                path = Path.GetFullPath(path);
+                if (!expected.Contains(path, StringComparer.OrdinalIgnoreCase)) continue;
                 var canDelete = item.TryGetProperty("canDelete", out var d) && d.ValueKind == JsonValueKind.True;
-                rows.Add(new AnalysisRow(Path.GetFileName(path), item.TryGetProperty("kind", out var k) ? k.GetString() ?? "" : "", canDelete ? "可考虑删除" : "建议保留 / 人工判断", item.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "未提供理由", item.TryGetProperty("confidence", out var c) ? c.GetString() ?? "低" : "低"));
+                rows[path] = new AnalysisRow(Path.GetFileName(path), item.TryGetProperty("kind", out var k) ? k.GetString() ?? "" : "", canDelete ? "可考虑删除" : "建议保留 / 人工判断", item.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "未提供理由", item.TryGetProperty("confidence", out var c) ? c.GetString() ?? "低" : "低");
             }
-            return rows;
+            return expected.Select(path => rows.TryGetValue(path, out var row) ? row : new AnalysisRow(Path.GetFileName(path), "未能判断", "需人工判断", "模型未返回该文件的分析结果。", "低")).ToList();
         }
-        catch { return [new AnalysisRow("模型原始回复", "", "人工判断", answer.Length > 1200 ? answer[..1200] : answer, "低")]; }
+        catch { return expected.Select(path => new AnalysisRow(Path.GetFileName(path), "未能判断", "需人工判断", "模型返回格式无效，未能可靠分析。", "低")).ToList(); }
     }
 
     private async Task<string> CallModelAsync(string prompt)
@@ -687,16 +691,34 @@ public partial class MainWindow : Window
         try
         {
             var errors = new List<string>();
+            var deleted = new List<FileRow>();
             foreach (var item in selected)
             {
                 try
                 {
                     if (item.IsDirectory) Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(item.FullPath, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
                     else Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(item.FullPath, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                    deleted.Add(item);
                 }
                 catch (Exception ex) { errors.Add($"{item.Name}: {ex.Message}"); }
             }
-            AnalysisStatus.Text = errors.Count == 0 ? $"已将 {selected.Count} 项移入回收站" : $"部分失败：{string.Join("；", errors.Take(3))}";
+            if (deleted.Count == 0) { AnalysisStatus.Text = $"删除失败：{string.Join("；", errors.Take(3))}"; return; }
+            foreach (var item in deleted)
+            {
+                var fullPath = Path.GetFullPath(item.FullPath);
+                if (item.IsDirectory)
+                {
+                    var prefix = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                    foreach (var key in _snapshot.Keys.Where(k => k.Equals(fullPath, StringComparison.OrdinalIgnoreCase) || k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToArray()) _snapshot.Remove(key);
+                    _directories.RemoveWhere(d => d.Equals(fullPath, StringComparison.OrdinalIgnoreCase) || d.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+                }
+                else _snapshot.Remove(fullPath);
+            }
+            var removedNames = deleted.Select(x => x.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (AnalysisGrid.ItemsSource is IEnumerable<AnalysisRow> analysisRows)
+                AnalysisGrid.ItemsSource = analysisRows.Where(x => !removedNames.Contains(x.Name)).ToList();
+            AnalysisStatus.Text = errors.Count == 0 ? $"已将 {deleted.Count} 项移入回收站" : $"已移入回收站 {deleted.Count} 项；失败：{string.Join("；", errors.Take(3))}";
+            if (CurrentDirectory is not null) await ShowDirectory(CurrentDirectory);
             await ScanAsync();
             if (CurrentDirectory is not null) await ShowDirectory(CurrentDirectory);
         }
