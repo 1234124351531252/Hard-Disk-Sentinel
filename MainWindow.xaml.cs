@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private bool _hasCpuSample, _hasNetworkSample;
     private bool _loadingModel;
     private bool _allowClose;
+    private bool _updatingDriveList;
     private System.Windows.Forms.NotifyIcon? _trayIcon;
     private ulong _sessionReceived, _sessionSent;
 
@@ -84,6 +85,8 @@ public partial class MainWindow : Window
         Activate();
     }
 
+    public void ActivateFromSecondInstance() => RestoreFromTray();
+
     private void ExitApplication()
     {
         _allowClose = true;
@@ -113,26 +116,35 @@ public partial class MainWindow : Window
             var result = await Task.Run(ScanAllDrives);
             var oldSnapshot = _snapshot;
             var selectedRoot = (DriveGrid.SelectedItem as DriveRow)?.Root ?? result.Drives.FirstOrDefault()?.Root;
+            var pickerRoot = (ManageDrivePicker.SelectedItem as DriveRow)?.Root;
+            var pathToRestore = CurrentDirectory;
             var processed = await Task.Run(() =>
             {
                 var changes = Compare(oldSnapshot, result.Files);
                 File.WriteAllText(Path.Combine(_dataDir, "baseline.json"), JsonSerializer.Serialize(result.Files));
                 SaveChanges(changes);
                 File.WriteAllText(Path.Combine(_dataDir, "directories.json"), JsonSerializer.Serialize(result.Directories));
-                return (changes: changes, files: TopFiles(result.Files, result.Directories, selectedRoot));
+                return changes;
             });
             _snapshot = result.Files;
             _directories = result.Directories;
-            _drives.Clear();
-            foreach (var d in result.Drives) _drives.Add(d);
+            _updatingDriveList = true;
+            try
+            {
+                _drives.Clear();
+                foreach (var d in result.Drives) _drives.Add(d);
+                DriveGrid.SelectedItem = _drives.FirstOrDefault(d => string.Equals(d.Root, selectedRoot, StringComparison.OrdinalIgnoreCase)) ?? _drives.FirstOrDefault();
+                ManageDrivePicker.SelectedItem = _drives.FirstOrDefault(d => string.Equals(d.Root, pickerRoot, StringComparison.OrdinalIgnoreCase));
+            }
+            finally { _updatingDriveList = false; }
             UsedTotal.Text = Human(result.Drives.Sum(x => x.Used));
             FreeTotal.Text = Human(result.Drives.Sum(x => x.Free));
             HomeDiskUsed.Text = UsedTotal.Text;
             HomeDiskFree.Text = FreeTotal.Text;
-            ChangeTotal.Text = processed.changes.Count == 0 ? "无变化" : $"{(processed.changes.Sum(c => c.Delta) >= 0 ? "+" : "−")}{Human(Math.Abs(processed.changes.Sum(c => c.Delta)))}";
+            ChangeTotal.Text = processed.Count == 0 ? "无变化" : $"{(processed.Sum(c => c.Delta) >= 0 ? "+" : "−")}{Human(Math.Abs(processed.Sum(c => c.Delta)))}";
             NavStatus.Text = $"{result.Drives.Count} 个磁盘 · 每 5 分钟更新";
-            if (DriveGrid.SelectedItem is DriveRow selected) FilesGrid.ItemsSource = processed.files;
-            else if (_drives.Count > 0) { DriveGrid.SelectedIndex = 0; FilesGrid.ItemsSource = processed.files; }
+            var path = pathToRestore is not null && Directory.Exists(pathToRestore) ? pathToRestore : selectedRoot;
+            if (path is not null) await ShowDirectory(path, clearAnalysis: false);
         }
         catch (Exception ex) { NavStatus.Text = "扫描失败：" + ex.Message; ChangeTotal.Text = "扫描失败"; }
         finally { _scanGate.Release(); }
@@ -243,6 +255,7 @@ public partial class MainWindow : Window
 
     private async void DriveGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_updatingDriveList) return;
         if (DriveGrid.SelectedItem is DriveRow d)
         {
             if (DriveGrid.SelectedItem is DriveRow current && current.Root == d.Root)
@@ -358,7 +371,7 @@ public partial class MainWindow : Window
 
     private async void ManageDrive_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ManagePage.Visibility != Visibility.Visible || ManageDrivePicker.SelectedItem is not DriveRow drive) return;
+        if (_updatingDriveList || ManagePage.Visibility != Visibility.Visible || ManageDrivePicker.SelectedItem is not DriveRow drive) return;
         DriveGrid.SelectedItem = drive;
         await ShowDirectory(drive.Root);
     }
@@ -712,11 +725,14 @@ public partial class MainWindow : Window
         if (FilesGrid.SelectedItem is FileRow { IsDirectory: true } row) await ShowDirectory(row.FullPath);
     }
 
-    private async Task ShowDirectory(string path)
+    private async Task ShowDirectory(string path, bool clearAnalysis = true)
     {
         CurrentDirectory = path;
-        AnalysisGrid.ItemsSource = null;
-        AnalysisStatus.Text = "当前目录尚未分析";
+        if (clearAnalysis)
+        {
+            AnalysisGrid.ItemsSource = null;
+            AnalysisStatus.Text = "当前目录尚未分析";
+        }
         var view = await Task.Run(() => (Rows: TopFiles(_snapshot, _directories, path), Slices: BuildDistribution(path, _snapshot, _directories)));
         if (CurrentDirectory != path) return;
         FilesGrid.ItemsSource = view.Rows;
