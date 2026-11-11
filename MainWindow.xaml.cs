@@ -35,13 +35,12 @@ public partial class MainWindow : Window
     private Dictionary<string, FileState> _snapshot = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _directories = new(StringComparer.OrdinalIgnoreCase);
     private string? CurrentDirectory;
-    private ulong _lastIdle, _lastKernel, _lastUser, _lastReceived, _lastSent;
-    private bool _hasCpuSample, _hasNetworkSample;
+    private ulong _lastIdle, _lastKernel, _lastUser;
+    private bool _hasCpuSample;
     private bool _loadingModel;
     private bool _allowClose;
     private bool _updatingDriveList;
     private System.Windows.Forms.NotifyIcon? _trayIcon;
-    private ulong _sessionReceived, _sessionSent;
 
     public MainWindow()
     {
@@ -117,7 +116,6 @@ public partial class MainWindow : Window
     {
         await _scanGate.WaitAsync();
         NavStatus.Text = "正在扫描所有本地磁盘…";
-        ChangeTotal.Text = "扫描中…";
         try
         {
             var result = await Task.Run(ScanAllDrives);
@@ -125,13 +123,12 @@ public partial class MainWindow : Window
             var selectedRoot = (DriveGrid.SelectedItem as DriveRow)?.Root ?? result.Drives.FirstOrDefault()?.Root;
             var pickerRoot = (ManageDrivePicker.SelectedItem as DriveRow)?.Root;
             var pathToRestore = CurrentDirectory;
-            var processed = await Task.Run(() =>
+            await Task.Run(() =>
             {
                 var changes = Compare(oldSnapshot, result.Files);
                 File.WriteAllText(Path.Combine(_dataDir, "baseline.json"), JsonSerializer.Serialize(result.Files));
                 SaveChanges(changes);
                 File.WriteAllText(Path.Combine(_dataDir, "directories.json"), JsonSerializer.Serialize(result.Directories));
-                return changes;
             });
             _snapshot = result.Files;
             _directories = result.Directories;
@@ -144,16 +141,11 @@ public partial class MainWindow : Window
                 ManageDrivePicker.SelectedItem = _drives.FirstOrDefault(d => string.Equals(d.Root, pickerRoot, StringComparison.OrdinalIgnoreCase));
             }
             finally { _updatingDriveList = false; }
-            UsedTotal.Text = Human(result.Drives.Sum(x => x.Used));
-            FreeTotal.Text = Human(result.Drives.Sum(x => x.Free));
-            HomeDiskUsed.Text = UsedTotal.Text;
-            HomeDiskFree.Text = FreeTotal.Text;
-            ChangeTotal.Text = processed.Count == 0 ? "无变化" : $"{(processed.Sum(c => c.Delta) >= 0 ? "+" : "−")}{Human(Math.Abs(processed.Sum(c => c.Delta)))}";
             NavStatus.Text = $"{result.Drives.Count} 个磁盘 · 每 5 分钟更新";
             var path = pathToRestore is not null && Directory.Exists(pathToRestore) ? pathToRestore : selectedRoot;
             if (path is not null) await ShowDirectory(path, clearAnalysis: false);
         }
-        catch (Exception ex) { NavStatus.Text = "扫描失败：" + ex.Message; ChangeTotal.Text = "扫描失败"; }
+        catch (Exception ex) { NavStatus.Text = "扫描失败：" + ex.Message; }
         finally { _scanGate.Release(); }
     }
 
@@ -276,7 +268,6 @@ public partial class MainWindow : Window
     private void Logs_Click(object sender, RoutedEventArgs e)
     {
         HomePage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
-        DiskSummaryCards.Visibility = Visibility.Collapsed;
         LogsPage.Visibility = Visibility.Visible;
         HomeNavButton.Background = Brushes.Transparent; HomeNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         LogsNavButton.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); LogsNavButton.Foreground = Brushes.White;
@@ -292,7 +283,6 @@ public partial class MainWindow : Window
     private void Home_Click(object sender, RoutedEventArgs e)
     {
         HomePage.Visibility = Visibility.Visible; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Visible;
-        DiskSummaryCards.Visibility = Visibility.Visible;
         HomeNavButton.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); HomeNavButton.Foreground = Brushes.White;
         LogsNavButton.Background = Brushes.Transparent; LogsNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         SetNav(HomeNavButton);
@@ -302,7 +292,7 @@ public partial class MainWindow : Window
     private async void Manage_Click(object sender, RoutedEventArgs e)
     {
         HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Visible;
-        DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        ScanButton.Visibility = Visibility.Collapsed;
         SetNav(ManageNavButton); PageTitle.Text = "磁盘管理"; PageSubtitle.Text = "从盘符开始浏览；勾选项目可多选处理";
         if (DriveGrid.SelectedItem is DriveRow drive)
         {
@@ -315,7 +305,7 @@ public partial class MainWindow : Window
     private void Model_Click(object sender, RoutedEventArgs e)
     {
         HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Visible;
-        DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        ScanButton.Visibility = Visibility.Collapsed;
         SetNav(ModelNavButton); PageTitle.Text = "大模型接入"; PageSubtitle.Text = "配置兼容 OpenAI 的模型 API";
         LoadModelConfig();
     }
@@ -323,7 +313,7 @@ public partial class MainWindow : Window
     private void AIHistory_Click(object sender, RoutedEventArgs e)
     {
         HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Visible;
-        DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        ScanButton.Visibility = Visibility.Collapsed;
         SetNav(AIHistoryNavButton); PageTitle.Text = "模型记录"; PageSubtitle.Text = "查看每次文件预测发送的内容、模型回复和用量";
         LoadAIHistory();
     }
@@ -331,7 +321,7 @@ public partial class MainWindow : Window
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Visible;
-        DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        ScanButton.Visibility = Visibility.Collapsed;
         SettingsDataPathInput.Text = _dataDir; SettingsLogPathInput.Text = _logDir;
         SetNav(SettingsNavButton); PageTitle.Text = "设置"; PageSubtitle.Text = "配置应用数据和日志的保存位置";
     }
@@ -747,28 +737,7 @@ public partial class MainWindow : Window
             MemoryDetail.Text = $"已用 {percent:0.0}% · 可用 {Human((long)memory.AvailablePhysical)}";
             MemoryBar.Value = percent;
         }
-        var (received, sent) = GetNetworkBytes();
-        if (_hasNetworkSample)
-        {
-            var down = received >= _lastReceived ? received - _lastReceived : 0;
-            var up = sent >= _lastSent ? sent - _lastSent : 0;
-            _sessionReceived += down; _sessionSent += up;
-            DownloadValue.Text = $"{HumanRate(down)}"; UploadValue.Text = HumanRate(up);
-        }
-        _lastReceived = received; _lastSent = sent; _hasNetworkSample = true;
-        DownloadTotal.Text = Human((long)_sessionReceived); UploadTotal.Text = Human((long)_sessionSent);
         MetricsUpdated.Text = $"实时指标每秒更新 · 最近更新 {now:HH:mm:ss}";
-    }
-
-    private static (ulong Received, ulong Sent) GetNetworkBytes()
-    {
-        ulong received = 0, sent = 0;
-        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
-        {
-            if (nic.OperationalStatus != OperationalStatus.Up || nic.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
-            try { var stats = nic.GetIPv4Statistics(); received += (ulong)stats.BytesReceived; sent += (ulong)stats.BytesSent; } catch { }
-        }
-        return (received, sent);
     }
 
     private static string GetLocalIPv4()
