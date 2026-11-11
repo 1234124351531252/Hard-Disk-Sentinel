@@ -28,7 +28,9 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMinutes(5) };
     private readonly DispatcherTimer _metricsTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly SemaphoreSlim _scanGate = new(1, 1);
-    private readonly string _dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DiskSentinel");
+    private readonly string _defaultDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DiskSentinel");
+    private string _dataDir = string.Empty;
+    private string _logDir = string.Empty;
     private readonly ObservableCollection<DriveRow> _drives = [];
     private Dictionary<string, FileState> _snapshot = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _directories = new(StringComparer.OrdinalIgnoreCase);
@@ -44,6 +46,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _dataDir = _defaultDataDir;
+        _logDir = Path.Combine(_defaultDataDir, "Logs");
+        LoadStorageSettings();
         InitializeTrayIcon();
         DriveGrid.ItemsSource = _drives;
         ManageDrivePicker.ItemsSource = _drives;
@@ -53,6 +58,8 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             Directory.CreateDirectory(_dataDir);
+            Directory.CreateDirectory(_logDir);
+            MigrateLegacyLogsOnce();
             var baseline = Path.Combine(_dataDir, "baseline.json");
             try { if (File.Exists(baseline)) _snapshot = await Task.Run(() => JsonSerializer.Deserialize<Dictionary<string, FileState>>(File.ReadAllText(baseline)) ?? new(StringComparer.OrdinalIgnoreCase)); } catch { }
             var directoryBaseline = Path.Combine(_dataDir, "directories.json");
@@ -226,7 +233,7 @@ public partial class MainWindow : Window
     private void SaveChanges(List<ChangeRow> changes)
     {
         if (changes.Count == 0) return;
-        var path = Path.Combine(_dataDir, $"changes-{DateTime.Now:yyyy-MM}.jsonl");
+        var path = Path.Combine(_logDir, $"changes-{DateTime.Now:yyyy-MM}.jsonl");
         using var writer = new StreamWriter(path, append: true);
         foreach (var c in changes) writer.WriteLine(JsonSerializer.Serialize(c));
     }
@@ -268,7 +275,7 @@ public partial class MainWindow : Window
 
     private void Logs_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         DiskSummaryCards.Visibility = Visibility.Collapsed;
         LogsPage.Visibility = Visibility.Visible;
         HomeNavButton.Background = Brushes.Transparent; HomeNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
@@ -277,7 +284,7 @@ public partial class MainWindow : Window
         SetNav(LogsNavButton);
         PageTitle.Text = "变化日志";
         PageSubtitle.Text = "来源栏为规则推测，会显示判断依据；不是进程级确认";
-        var logPath = Path.Combine(_dataDir, $"changes-{DateTime.Now:yyyy-MM}.jsonl");
+        var logPath = Path.Combine(_logDir, $"changes-{DateTime.Now:yyyy-MM}.jsonl");
         var rows = new List<ChangeRow>();
         if (File.Exists(logPath)) foreach (var line in File.ReadLines(logPath).TakeLast(3000)) { try { var row = JsonSerializer.Deserialize<ChangeRow>(line); if (row != null) rows.Add(row); } catch { } }
         LogsGrid.ItemsSource = rows.OrderByDescending(r => r.Time).Select(r => new LogDisplay(r.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), (r.Delta >= 0 ? "+" : "−") + Human(Math.Abs(r.Delta)), r.Kind, r.Cause, r.Path)).ToList();
@@ -285,8 +292,8 @@ public partial class MainWindow : Window
 
     private void Disk_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Visible; ScanButton.Visibility = Visibility.Visible;
-        DiskSummaryCards.Visibility = Visibility.Visible;
+        HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Visible; ScanButton.Visibility = Visibility.Visible;
+        DiskSummaryCards.Visibility = Visibility.Collapsed;
         HomeNavButton.Background = Brushes.Transparent; HomeNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         DiskNavButton.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); DiskNavButton.Foreground = Brushes.White;
         LogsNavButton.Background = Brushes.Transparent; LogsNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
@@ -298,18 +305,18 @@ public partial class MainWindow : Window
 
     private void Home_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Visible; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
-        DiskSummaryCards.Visibility = Visibility.Collapsed;
+        HomePage.Visibility = Visibility.Visible; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        DiskSummaryCards.Visibility = Visibility.Visible;
         HomeNavButton.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); HomeNavButton.Foreground = Brushes.White;
         DiskNavButton.Background = Brushes.Transparent; DiskNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         LogsNavButton.Background = Brushes.Transparent; LogsNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         SetNav(HomeNavButton);
-        PageTitle.Text = "首页"; PageSubtitle.Text = "设备状态与实时运行数据";
+        PageTitle.Text = "首页"; PageSubtitle.Text = "磁盘空间总览与设备实时指标";
     }
 
     private async void Manage_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Visible;
+        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Visible;
         DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         SetNav(ManageNavButton); PageTitle.Text = "磁盘管理"; PageSubtitle.Text = "从盘符开始浏览；勾选项目可多选处理";
         if (DriveGrid.SelectedItem is DriveRow drive)
@@ -322,7 +329,7 @@ public partial class MainWindow : Window
 
     private void Model_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Visible;
+        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Visible;
         DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         SetNav(ModelNavButton); PageTitle.Text = "大模型接入"; PageSubtitle.Text = "配置兼容 OpenAI 的模型 API";
         LoadModelConfig();
@@ -330,10 +337,103 @@ public partial class MainWindow : Window
 
     private void AIHistory_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Visible;
+        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Visible;
         DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         SetNav(AIHistoryNavButton); PageTitle.Text = "模型记录"; PageSubtitle.Text = "查看每次文件预测发送的内容、模型回复和用量";
         LoadAIHistory();
+    }
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Visible;
+        DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        SettingsDataPathInput.Text = _dataDir; SettingsLogPathInput.Text = _logDir;
+        SetNav(SettingsNavButton); PageTitle.Text = "设置"; PageSubtitle.Text = "配置应用数据和日志的保存位置";
+    }
+
+    private void BrowseDataPath_Click(object sender, RoutedEventArgs e) => BrowseFolder(SettingsDataPathInput);
+    private void BrowseLogPath_Click(object sender, RoutedEventArgs e) => BrowseFolder(SettingsLogPathInput);
+
+    private static void BrowseFolder(System.Windows.Controls.TextBox target)
+    {
+        using var dialog = new System.Windows.Forms.FolderBrowserDialog { SelectedPath = target.Text, ShowNewFolderButton = true, Description = "选择保存目录" };
+        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK) target.Text = dialog.SelectedPath;
+    }
+
+    private void SaveStorage_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(SettingsDataPathInput.Text) || string.IsNullOrWhiteSpace(SettingsLogPathInput.Text))
+                throw new InvalidOperationException("数据目录和日志目录都不能为空。");
+            var newDataDir = Path.GetFullPath(SettingsDataPathInput.Text.Trim());
+            var newLogDir = Path.GetFullPath(SettingsLogPathInput.Text.Trim());
+            Directory.CreateDirectory(newDataDir);
+            Directory.CreateDirectory(newLogDir);
+            CopyDataFilesIfMissing(_dataDir, newDataDir);
+            CopyLogFilesIfMissing(_logDir, newLogDir);
+            Directory.CreateDirectory(_defaultDataDir);
+            File.WriteAllText(StorageSettingsPath, JsonSerializer.Serialize(new StorageSettings(newDataDir, newLogDir)));
+            _dataDir = newDataDir;
+            _logDir = newLogDir;
+            SettingsDataPathInput.Text = newDataDir;
+            SettingsLogPathInput.Text = newLogDir;
+            SettingsStatus.Text = "保存成功。原目录中的数据已复制到新目录（不会覆盖已存在的文件）。";
+            LoadModelConfig();
+            LoadAIHistory();
+        }
+        catch (Exception ex) { SettingsStatus.Text = "保存失败：" + ex.Message; }
+    }
+
+    private void ResetStorage_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsDataPathInput.Text = _defaultDataDir;
+        SettingsLogPathInput.Text = Path.Combine(_defaultDataDir, "Logs");
+        SaveStorage_Click(sender, e);
+    }
+
+    private string StorageSettingsPath => Path.Combine(_defaultDataDir, "settings.json");
+
+    private string LegacyLogMigrationMarker => Path.Combine(_defaultDataDir, "logs-migrated-v1.marker");
+
+    private void MigrateLegacyLogsOnce()
+    {
+        if (File.Exists(LegacyLogMigrationMarker)) return;
+        CopyLogFilesIfMissing(_defaultDataDir, _logDir);
+        File.WriteAllText(LegacyLogMigrationMarker, DateTime.UtcNow.ToString("O"));
+    }
+
+    private void LoadStorageSettings()
+    {
+        try
+        {
+            if (!File.Exists(StorageSettingsPath)) return;
+            var settings = JsonSerializer.Deserialize<StorageSettings>(File.ReadAllText(StorageSettingsPath));
+            if (!string.IsNullOrWhiteSpace(settings?.DataDirectory)) _dataDir = Path.GetFullPath(settings.DataDirectory);
+            if (!string.IsNullOrWhiteSpace(settings?.LogDirectory)) _logDir = Path.GetFullPath(settings.LogDirectory);
+        }
+        catch { _dataDir = _defaultDataDir; _logDir = Path.Combine(_defaultDataDir, "Logs"); }
+    }
+
+    private static void CopyDataFilesIfMissing(string sourceDirectory, string destinationDirectory)
+    {
+        if (string.Equals(Path.GetFullPath(sourceDirectory), Path.GetFullPath(destinationDirectory), StringComparison.OrdinalIgnoreCase)) return;
+        foreach (var name in new[] { "baseline.json", "directories.json", "model.json" })
+        {
+            var source = Path.Combine(sourceDirectory, name); var destination = Path.Combine(destinationDirectory, name);
+            if (File.Exists(source) && !File.Exists(destination)) File.Copy(source, destination);
+        }
+    }
+
+    private static void CopyLogFilesIfMissing(string sourceDirectory, string destinationDirectory)
+    {
+        if (!Directory.Exists(sourceDirectory) || string.Equals(Path.GetFullPath(sourceDirectory), Path.GetFullPath(destinationDirectory), StringComparison.OrdinalIgnoreCase)) return;
+        Directory.CreateDirectory(destinationDirectory);
+        foreach (var source in Directory.EnumerateFiles(sourceDirectory, "changes-*.jsonl").Append(Path.Combine(sourceDirectory, "ai-requests.jsonl")))
+        {
+            var destination = Path.Combine(destinationDirectory, Path.GetFileName(source));
+            if (File.Exists(source) && !File.Exists(destination)) File.Copy(source, destination);
+        }
     }
 
     private void AIHistoryGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -402,7 +502,7 @@ public partial class MainWindow : Window
 
     private void SetNav(System.Windows.Controls.Button active)
     {
-        foreach (var button in new[] { HomeNavButton, DiskNavButton, ManageNavButton, ModelNavButton, AIHistoryNavButton, LogsNavButton })
+        foreach (var button in new[] { HomeNavButton, DiskNavButton, ManageNavButton, ModelNavButton, AIHistoryNavButton, LogsNavButton, SettingsNavButton })
         { button.Background = Brushes.Transparent; button.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213)); }
         active.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); active.Foreground = Brushes.White;
     }
@@ -595,7 +695,7 @@ public partial class MainWindow : Window
     }
 
     private static int? ReadToken(JsonElement element, string name) => element.TryGetProperty(name, out var value) && value.TryGetInt32(out var count) ? count : null;
-    private string AIHistoryPath => Path.Combine(_dataDir, "ai-requests.jsonl");
+    private string AIHistoryPath => Path.Combine(_logDir, "ai-requests.jsonl");
     private void AppendAIHistory(AIRequestRecord record)
     {
         Directory.CreateDirectory(_dataDir);
@@ -869,6 +969,7 @@ public partial class MainWindow : Window
     { public bool IsChecked { get; set; } public string SizeText => Human(Size); public string ModifiedText => Modified.ToLocalTime().ToString("yyyy-MM-dd HH:mm"); }
     private sealed record LogDisplay(string TimeText, string DeltaText, string Kind, string Cause, string Path);
     private sealed record AIRequestRecord(DateTime Time, string Provider, string Model, int? InputTokens, int? OutputTokens, int? TotalTokens, string Prompt, string Response);
+    private sealed record StorageSettings(string DataDirectory, string LogDirectory);
     private sealed record AIHistoryDisplay(string TimeText, string Provider, string Model, string InputTokens, string OutputTokens, string TotalTokens, string Prompt, string Response);
     private sealed record ModelCallResult(string Response, int? InputTokens, int? OutputTokens, int? TotalTokens);
     private sealed record LegendRow(string Name, string SizeText, Brush Color);
