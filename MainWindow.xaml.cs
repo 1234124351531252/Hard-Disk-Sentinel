@@ -275,11 +275,10 @@ public partial class MainWindow : Window
 
     private void Logs_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        HomePage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         DiskSummaryCards.Visibility = Visibility.Collapsed;
         LogsPage.Visibility = Visibility.Visible;
         HomeNavButton.Background = Brushes.Transparent; HomeNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
-        DiskNavButton.Background = Brushes.Transparent; DiskNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         LogsNavButton.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); LogsNavButton.Foreground = Brushes.White;
         SetNav(LogsNavButton);
         PageTitle.Text = "变化日志";
@@ -290,25 +289,11 @@ public partial class MainWindow : Window
         LogsGrid.ItemsSource = rows.OrderByDescending(r => r.Time).Select(r => new LogDisplay(r.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), (r.Delta >= 0 ? "+" : "−") + Human(Math.Abs(r.Delta)), r.Kind, r.Cause, r.Path)).ToList();
     }
 
-    private void Disk_Click(object sender, RoutedEventArgs e)
-    {
-        HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Visible; ScanButton.Visibility = Visibility.Visible;
-        DiskSummaryCards.Visibility = Visibility.Collapsed;
-        HomeNavButton.Background = Brushes.Transparent; HomeNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
-        DiskNavButton.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); DiskNavButton.Foreground = Brushes.White;
-        LogsNavButton.Background = Brushes.Transparent; LogsNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
-        SetNav(DiskNavButton);
-        PageTitle.Text = "磁盘空间";
-        if (DriveGrid.SelectedItem is DriveRow d) PageSubtitle.Text = $"{d.Root} · 双击文件夹继续浏览";
-        else PageSubtitle.Text = "自动发现并监控所有可用磁盘";
-    }
-
     private void Home_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Visible; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
+        HomePage.Visibility = Visibility.Visible; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Visible;
         DiskSummaryCards.Visibility = Visibility.Visible;
         HomeNavButton.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); HomeNavButton.Foreground = Brushes.White;
-        DiskNavButton.Background = Brushes.Transparent; DiskNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         LogsNavButton.Background = Brushes.Transparent; LogsNavButton.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213));
         SetNav(HomeNavButton);
         PageTitle.Text = "首页"; PageSubtitle.Text = "磁盘空间总览与设备实时指标";
@@ -316,7 +301,7 @@ public partial class MainWindow : Window
 
     private async void Manage_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Visible;
+        HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Visible;
         DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         SetNav(ManageNavButton); PageTitle.Text = "磁盘管理"; PageSubtitle.Text = "从盘符开始浏览；勾选项目可多选处理";
         if (DriveGrid.SelectedItem is DriveRow drive)
@@ -329,7 +314,7 @@ public partial class MainWindow : Window
 
     private void Model_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Visible;
+        HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Visible;
         DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         SetNav(ModelNavButton); PageTitle.Text = "大模型接入"; PageSubtitle.Text = "配置兼容 OpenAI 的模型 API";
         LoadModelConfig();
@@ -337,7 +322,7 @@ public partial class MainWindow : Window
 
     private void AIHistory_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Visible;
+        HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Visible;
         DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         SetNav(AIHistoryNavButton); PageTitle.Text = "模型记录"; PageSubtitle.Text = "查看每次文件预测发送的内容、模型回复和用量";
         LoadAIHistory();
@@ -345,7 +330,7 @@ public partial class MainWindow : Window
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
-        HomePage.Visibility = Visibility.Collapsed; DiskPage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Visible;
+        HomePage.Visibility = Visibility.Collapsed; LogsPage.Visibility = Visibility.Collapsed; ManagePage.Visibility = Visibility.Collapsed; ModelPage.Visibility = Visibility.Collapsed; AIHistoryPage.Visibility = Visibility.Collapsed; SettingsPage.Visibility = Visibility.Visible;
         DiskSummaryCards.Visibility = Visibility.Collapsed; ScanButton.Visibility = Visibility.Collapsed;
         SettingsDataPathInput.Text = _dataDir; SettingsLogPathInput.Text = _logDir;
         SetNav(SettingsNavButton); PageTitle.Text = "设置"; PageSubtitle.Text = "配置应用数据和日志的保存位置";
@@ -502,7 +487,7 @@ public partial class MainWindow : Window
 
     private void SetNav(System.Windows.Controls.Button active)
     {
-        foreach (var button in new[] { HomeNavButton, DiskNavButton, ManageNavButton, ModelNavButton, AIHistoryNavButton, LogsNavButton, SettingsNavButton })
+        foreach (var button in new[] { HomeNavButton, ManageNavButton, ModelNavButton, AIHistoryNavButton, LogsNavButton, SettingsNavButton })
         { button.Background = Brushes.Transparent; button.Foreground = new SolidColorBrush(Color.FromRgb(184, 194, 213)); }
         active.Background = new SolidColorBrush(Color.FromRgb(38, 52, 82)); active.Foreground = Brushes.White;
     }
