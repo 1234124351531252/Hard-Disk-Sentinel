@@ -1,0 +1,7 @@
+<Application x:Class="DiskSentinel.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" StartupUri="MainWindow.xaml">
+  <Application.Resources>
+    <Color x:Key="Ink">#17243A</Color><Color x:Key="Muted">#77849A</Color><Color x:Key="Blue">#4468F5</Color>
+    <SolidColorBrush x:Key="InkBrush" Color="{StaticResource Ink}"/><SolidColorBrush x:Key="MutedBrush" Color="{StaticResource Muted}"/><SolidColorBrush x:Key="BlueBrush" Color="{StaticResource Blue}"/>
+    <Style TargetType="Button"><Setter Property="Cursor" Value="Hand"/><Setter Property="Padding" Value="14,9"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="#EEF2FF"/><Setter Property="Foreground" Value="#3457DC"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="9" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Setter.Value></Setter></Style>
+  </Application.Resources>
+</Application>

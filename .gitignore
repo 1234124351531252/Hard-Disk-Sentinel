@@ -1,0 +1,17 @@
+.dotnet/
+bin/
+obj/
+.vs/
+发布版/
+*.user
+*.suo
+*.log
+*.env
+.env*
+model.json
+baseline.json
+directories.json
+changes-*.jsonl
+*.pfx
+*.key
+secrets/
