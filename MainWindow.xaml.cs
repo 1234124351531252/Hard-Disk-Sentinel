@@ -429,10 +429,13 @@ public partial class MainWindow : Window
         {
             AnalysisStatus.Text = "请先配置模型连接"; Model_Click(sender, e); return;
         }
-        string[] paths;
-        try { paths = Directory.GetFiles(CurrentDirectory); }
-        catch (Exception ex) { AnalysisStatus.Text = "无法读取目录：" + ex.Message; return; }
-        if (paths.Length == 0) { AnalysisStatus.Text = "当前目录没有直接包含的文件"; return; }
+        // Use the same immediate-child rows that are currently shown in the file manager.
+        // This keeps hidden/system entries and stale scan results from silently diverging
+        // from what the user can inspect in the directory list.
+        var visibleRows = ManageFilesGrid.ItemsSource?.Cast<FileRow>().ToList() ?? [];
+        var paths = visibleRows.Where(x => !x.IsDirectory).Select(x => x.FullPath).ToArray();
+        AnalysisGrid.ItemsSource = null;
+        if (paths.Length == 0) { AnalysisStatus.Text = "当前目录列表中没有直接包含的文件；子文件夹不会递归分析"; return; }
         var info = paths.Select(p => { try { var f = new FileInfo(p); return $"• {p} | {Human(f.Length)} | {f.LastWriteTime:yyyy-MM-dd HH:mm}"; } catch { return $"• {p} | 元数据不可读"; } });
         var confirm = MessageBox.Show($"将只发送当前目录直接包含的 {paths.Length} 个文件的元数据（路径、名称、大小、修改时间），不会读取或发送文件内容，也不会递归子目录。\n\n目录：{CurrentDirectory}\n\n{string.Join("\n", info.Take(8))}{(paths.Length > 8 ? "\n…" : "")}\n\n是否继续？", "发送文件信息进行 AI 分析", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.Yes) return;
@@ -712,6 +715,8 @@ public partial class MainWindow : Window
     private async Task ShowDirectory(string path)
     {
         CurrentDirectory = path;
+        AnalysisGrid.ItemsSource = null;
+        AnalysisStatus.Text = "当前目录尚未分析";
         var view = await Task.Run(() => (Rows: TopFiles(_snapshot, _directories, path), Slices: BuildDistribution(path, _snapshot, _directories)));
         if (CurrentDirectory != path) return;
         FilesGrid.ItemsSource = view.Rows;
